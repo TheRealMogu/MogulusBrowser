@@ -19,7 +19,11 @@
     "lint": "eslint src --ext .ts,.tsx"
   },
   "keywords": ["browser", "electron", "desktop"],
-  "author": "TheRealMogu",
+  "author": {
+    "name": "TheRealMogu",
+    "email": "lucamogu7@gmail.com"
+  },
+  "homepage": "https://github.com/therealmogu/mogulusbrowser",
   "license": "MIT",
   "devDependencies": {
     "@types/react": "^18.3.3",
