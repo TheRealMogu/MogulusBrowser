@@ -12,6 +12,10 @@
     "build:renderer": "vite build",
     "build:main": "tsc -p tsconfig.main.json",
     "pack": "npm run build && electron-builder",
+    "pack:dir": "npm run build && electron-builder --dir",
+    "pack:linux": "npm run build && electron-builder --linux",
+    "pack:win": "npm run build && electron-builder --win",
+    "pack:mac": "npm run build && electron-builder --mac",
     "lint": "eslint src --ext .ts,.tsx"
   },
   "keywords": ["browser", "electron", "desktop"],
@@ -45,16 +49,21 @@
       "assets/**/*"
     ],
     "linux": {
-      "target": "AppImage",
-      "icon": "assets/icons"
+      "target": ["AppImage", "deb"],
+      "icon": "assets/icons/512x512.png",
+      "category": "Network"
     },
     "mac": {
-      "target": "dmg",
-      "icon": "assets/icons/icon.icns"
+      "target": [{"target": "dmg", "arch": ["x64", "arm64"]}],
+      "icon": "assets/icons/512x512.png"
     },
     "win": {
-      "target": "nsis",
-      "icon": "assets/icons/icon.ico"
-    }
+      "target": [{"target": "nsis", "arch": ["x64"]}],
+      "icon": "assets/icons/512x512.png"
+    },
+    "electronDownload": {
+      "cache": "~/.cache/electron"
+    },
+    "npmRebuild": false
   }
 }
