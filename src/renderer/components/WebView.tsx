@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useCallback, useState } from 'react'
 import { useBrowser } from '../store/BrowserContext'
 import { Tab } from '../store/browserStore'
 import HomePage from '../pages/HomePage'
+import FindBar from './FindBar'
+import ReadingMode from './ReadingMode'
 
 interface PaneProps {
   tab: Tab
@@ -163,6 +165,58 @@ function SplitHandle({ onResize }: { onResize: (dx: number) => void }) {
   return <div className="split-handle" onMouseDown={onMouseDown} />
 }
 
+// ── Context menu ─────────────────────────────────────────────────────────────
+
+interface ContextMenuState {
+  x: number
+  y: number
+  linkUrl?: string
+  mediaType?: string
+}
+
+function ContextMenuOverlay({ state, onClose, onOpenLinkInNewTab, onFindInPage, onViewSource, onInspectElement }: {
+  state: ContextMenuState
+  onClose: () => void
+  onOpenLinkInNewTab?: () => void
+  onFindInPage: () => void
+  onViewSource: () => void
+  onInspectElement: () => void
+}) {
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) onClose()
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [onClose])
+
+  const style: React.CSSProperties = {
+    position: 'fixed',
+    left: Math.min(state.x, window.innerWidth - 210),
+    top: Math.min(state.y, window.innerHeight - 250),
+    zIndex: 9999,
+  }
+
+  const items: Array<{ label: string; action: () => void } | 'divider'> = [
+    ...(state.linkUrl ? [{ label: 'Open Link in New Tab', action: onOpenLinkInNewTab ?? onClose }, 'divider' as const] : []),
+    { label: 'Find in Page (⌘F)', action: onFindInPage },
+    { label: 'View Source', action: onViewSource },
+    { label: 'Inspect Element', action: onInspectElement },
+  ]
+
+  return (
+    <div className="context-menu" style={style} ref={menuRef}>
+      {items.map((item, i) =>
+        item === 'divider'
+          ? <div key={i} className="context-menu-divider" />
+          : <button key={i} className="context-menu-item" onClick={() => { item.action(); onClose() }}>{item.label}</button>
+      )}
+    </div>
+  )
+}
+
 // ── Main container ────────────────────────────────────────────────────────────
 
 export default function WebViewContainer() {
@@ -173,9 +227,13 @@ export default function WebViewContainer() {
     activeTab,
     splitTabId,
     webviewPreloadPath,
+    openFindBar,
+    addTab,
+    getActiveWebview,
   } = useBrowser()
 
   const [splitRatio, setSplitRatio] = useState(0.5) // left pane fraction
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
 
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -191,6 +249,18 @@ export default function WebViewContainer() {
       isActive: ws.id === activeWorkspaceId && tab.id === ws.activeTabId,
     }))
   )
+
+  // Wire up context menu on active webview
+  useEffect(() => {
+    const wv = getActiveWebview()
+    if (!wv) return
+    const onCtxMenu = (e: Event) => {
+      const ev = e as Electron.ContextMenuEvent
+      setContextMenu({ x: ev.params.x, y: ev.params.y, linkUrl: ev.params.linkURL || undefined, mediaType: ev.params.mediaType })
+    }
+    wv.addEventListener('context-menu', onCtxMenu as EventListener)
+    return () => wv.removeEventListener('context-menu', onCtxMenu as EventListener)
+  }, [activeTab?.id, getActiveWebview])
 
   const showHome = activeTab?.url === 'mogulus://home'
   const splitTab = splitTabId
@@ -256,6 +326,7 @@ export default function WebViewContainer() {
       className="webview-area"
       style={themeColor ? { '--tab-theme-color': themeColor } as React.CSSProperties : {}}
     >
+      <FindBar />
       {showHome && <HomePage />}
       {allPanes.map(({ tab, workspaceId, isActive }) => (
         <WebViewPane
@@ -266,6 +337,17 @@ export default function WebViewContainer() {
           webviewPreloadPath={webviewPreloadPath}
         />
       ))}
+      {activeTab?.isReadingMode && <ReadingMode />}
+      {contextMenu && (
+        <ContextMenuOverlay
+          state={contextMenu}
+          onClose={() => setContextMenu(null)}
+          onOpenLinkInNewTab={contextMenu.linkUrl ? () => addTab(contextMenu.linkUrl!) : undefined}
+          onFindInPage={() => openFindBar()}
+          onViewSource={() => getActiveWebview()?.executeJavaScript(`window.location.href='view-source:'+location.href`).catch(()=>{})}
+          onInspectElement={() => getActiveWebview()?.openDevTools()}
+        />
+      )}
     </div>
   )
 }

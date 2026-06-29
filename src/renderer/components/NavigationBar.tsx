@@ -8,6 +8,7 @@ export default function NavigationBar() {
   const {
     activeTab,
     activeWorkspace,
+    activeWorkspaceId,
     navigateTo,
     getActiveWebview,
     openCommandPalette,
@@ -20,6 +21,11 @@ export default function NavigationBar() {
     toggleBookmark,
     isTabBookmarked,
     registerUrlBarFocus,
+    zoomIn,
+    zoomOut,
+    resetZoom,
+    toggleSettings,
+    updateTab,
   } = useBrowser()
 
   const [inputVal, setInputVal] = useState('')
@@ -33,6 +39,8 @@ export default function NavigationBar() {
   const trackers = activeTab?.trackerCount ?? 0
   const bookmarked = !isHome && isTabBookmarked(activeTab?.url ?? '')
   const activeDownloads = downloads.filter(d => d.state === 'progressing').length
+  const zoom = activeTab?.zoom ?? 1.0
+  const showZoom = zoom !== 1.0
 
   // Register focus function with store so Cmd+L can trigger it
   useEffect(() => {
@@ -183,6 +191,64 @@ export default function NavigationBar() {
           )}
         </div>
 
+        {/* Zoom indicator */}
+        {showZoom && (
+          <button className="zoom-indicator" onClick={resetZoom} title="Reset zoom (⌘0)">
+            {Math.round(zoom * 100)}%
+          </button>
+        )}
+
+        {/* PiP button */}
+        {!isHome && (
+          <NavBtn onClick={() => getActiveWebview()?.executeJavaScript("document.querySelector('video')?.requestPictureInPicture().catch(()=>{})")} title="Picture in Picture">
+            <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+              <rect x="1" y="3" width="13" height="9" rx="1.5" stroke="currentColor" strokeWidth="1.2"/>
+              <rect x="7" y="6" width="6" height="4" rx="1" fill="currentColor" opacity="0.8"/>
+            </svg>
+          </NavBtn>
+        )}
+
+        {/* Reading mode */}
+        {!isHome && (
+          <NavBtn
+            onClick={() => activeTab && updateTab(activeTab.id, { isReadingMode: !activeTab.isReadingMode }, activeWorkspaceId)}
+            active={activeTab?.isReadingMode}
+            title="Reading Mode"
+          >
+            <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+              <path d="M2 3h11M2 6h8M2 9h10M2 12h7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+            </svg>
+          </NavBtn>
+        )}
+
+        {/* Mobile mode */}
+        {!isHome && (
+          <NavBtn
+            onClick={() => {
+              if (!activeTab) return
+              const nowMobile = !activeTab.isMobile
+              updateTab(activeTab.id, { isMobile: nowMobile }, activeWorkspaceId)
+              const wv = getActiveWebview()
+              if (wv) {
+                const ua = nowMobile
+                  ? 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1'
+                  : 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+                wv.executeJavaScript(`
+                  Object.defineProperty(navigator,'userAgent',{get:()=>'${ua.replace(/'/g, "\\'")}',configurable:true});
+                  (()=>{var v=document.querySelector('meta[name=viewport]');if(!v){v=document.createElement('meta');v.setAttribute('name','viewport');document.head.appendChild(v);}v.setAttribute('content','${nowMobile ? 'width=390,initial-scale=1' : 'width=device-width,initial-scale=1'}');})()
+                `).then(() => wv.reload()).catch(() => {})
+              }
+            }}
+            active={activeTab?.isMobile}
+            title={activeTab?.isMobile ? 'Switch to desktop view' : 'Switch to mobile view'}
+          >
+            <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+              <rect x="4" y="1" width="7" height="13" rx="1.5" stroke="currentColor" strokeWidth="1.2"/>
+              <circle cx="7.5" cy="11.5" r="0.8" fill="currentColor"/>
+            </svg>
+          </NavBtn>
+        )}
+
         {/* Downloads button */}
         <NavBtn
           onClick={toggleDownloadPanel}
@@ -202,6 +268,14 @@ export default function NavigationBar() {
             <rect x="1" y="3" width="13" height="2" rx="1" fill="currentColor" opacity="0.7"/>
             <rect x="1" y="7" width="9" height="2" rx="1" fill="currentColor" opacity="0.7"/>
             <rect x="1" y="11" width="11" height="2" rx="1" fill="currentColor" opacity="0.7"/>
+          </svg>
+        </NavBtn>
+
+        {/* Settings button */}
+        <NavBtn onClick={toggleSettings} title="Settings (⌘,)">
+          <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+            <circle cx="7.5" cy="7.5" r="2" stroke="currentColor" strokeWidth="1.2"/>
+            <path d="M7.5 1.5v1.2M7.5 12.3v1.2M1.5 7.5h1.2M12.3 7.5h1.2M3.4 3.4l.85.85M10.75 10.75l.85.85M3.4 11.6l.85-.85M10.75 4.25l.85-.85" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
           </svg>
         </NavBtn>
 

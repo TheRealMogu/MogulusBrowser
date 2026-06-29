@@ -5,11 +5,11 @@ import { configureDoH, setMainWindow } from './privacy'
 import { setupDefaultSessions } from './sessions'
 import { initHistory } from './history'
 import { initBookmarks } from './bookmarks'
+import { initSettings } from './settings'
+import { initPermissions } from './permissions'
+import { loadAllExtensions } from './extensions'
 
-// DoH must be configured before app is ready
 configureDoH('cloudflare')
-
-// Disable Electron's own update checks and telemetry
 app.commandLine.appendSwitch('disable-background-networking', 'false')
 app.commandLine.appendSwitch('no-pings')
 
@@ -18,42 +18,23 @@ const isMac = process.platform === 'darwin'
 
 function createMainWindow(): BrowserWindow {
   const win = new BrowserWindow({
-    width: 1280,
-    height: 800,
-    minWidth: 860,
-    minHeight: 600,
+    width: 1280, height: 800, minWidth: 860, minHeight: 600,
     titleBarStyle: 'hidden',
     trafficLightPosition: isMac ? { x: 14, y: 14 } : undefined,
     frame: isMac ? undefined : false,
     backgroundColor: '#0f0f11',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: false,
-      webviewTag: true,
-      spellcheck: false,
+      contextIsolation: true, nodeIntegration: false, sandbox: false,
+      webviewTag: true, spellcheck: false,
     },
     show: false,
   })
-
   win.once('ready-to-show', () => win.show())
-
-  if (isDev) {
-    win.loadURL('http://localhost:5174')
-  } else {
-    win.loadFile(path.join(__dirname, '../renderer/index.html'))
-  }
-
-  win.webContents.on('will-navigate', (event) => {
-    if (!isDev) event.preventDefault()
-  })
-
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url)
-    return { action: 'deny' }
-  })
-
+  if (isDev) win.loadURL('http://localhost:5174')
+  else win.loadFile(path.join(__dirname, '../renderer/index.html'))
+  win.webContents.on('will-navigate', (event) => { if (!isDev) event.preventDefault() })
+  win.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' } })
   return win
 }
 
@@ -64,11 +45,8 @@ function setupWebContentsPolicy() {
       try {
         const parsed = new URL(url)
         if (!allowedSchemes.includes(parsed.protocol)) event.preventDefault()
-      } catch {
-        event.preventDefault()
-      }
+      } catch { event.preventDefault() }
     })
-
     contents.setWindowOpenHandler(({ url }) => {
       const wins = BrowserWindow.getAllWindows()
       if (wins.length > 0) wins[0].webContents.send('tab:open-url', url)
@@ -77,16 +55,17 @@ function setupWebContentsPolicy() {
   })
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  initSettings()
   initHistory()
   initBookmarks()
-
   const win = createMainWindow()
   setupDefaultSessions(win)
   setMainWindow(win)
   setupIpcHandlers(win)
+  initPermissions(win)
   setupWebContentsPolicy()
-
+  await loadAllExtensions()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       const w = createMainWindow()
@@ -96,6 +75,4 @@ app.whenReady().then(() => {
   })
 })
 
-app.on('window-all-closed', () => {
-  if (!isMac) app.quit()
-})
+app.on('window-all-closed', () => { if (!isMac) app.quit() })

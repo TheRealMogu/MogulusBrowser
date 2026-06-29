@@ -1,5 +1,50 @@
 // Runs in webview page context (contextIsolation=no) — overrides JS fingerprinting APIs
 ;(function () {
+  // ── Delete webdriver ──────────────────────────────────────────────────────────
+  try { Object.defineProperty(navigator, 'webdriver', { get: () => undefined }) } catch { /* ignore */ }
+
+  // ── Inject window.chrome ─────────────────────────────────────────────────────
+  try {
+    if (!(window as unknown as Record<string, unknown>)['chrome']) {
+      (window as unknown as Record<string, unknown>)['chrome'] = {
+        runtime: {},
+        loadTimes: () => ({}),
+        csi: () => ({}),
+        app: {},
+      }
+    }
+  } catch { /* ignore */ }
+
+  // ── Fix navigator.plugins ────────────────────────────────────────────────────
+  try {
+    const fakePlugin = (name: string, filename: string, desc: string): Plugin => {
+      const plugin = Object.create(Plugin.prototype)
+      Object.defineProperties(plugin, {
+        name: { value: name }, filename: { value: filename }, description: { value: desc }, length: { value: 0 },
+      })
+      return plugin
+    }
+    const plugins = [
+      fakePlugin('Chrome PDF Plugin', 'internal-pdf-viewer', 'Portable Document Format'),
+      fakePlugin('Chrome PDF Viewer', 'mhjfbmdgcfjbbpaeojofohoefgiehjai', ''),
+      fakePlugin('Native Client', 'internal-nacl-plugin', ''),
+    ]
+    Object.defineProperty(navigator, 'plugins', {
+      get: () => {
+        const list = Object.create(PluginArray.prototype)
+        plugins.forEach((p, i) => { list[i] = p })
+        Object.defineProperty(list, 'length', { value: plugins.length })
+        list[Symbol.iterator] = function* () { for (let i = 0; i < plugins.length; i++) yield list[i] }
+        return list
+      },
+    })
+  } catch { /* ignore */ }
+
+  // ── Fix navigator.languages ──────────────────────────────────────────────────
+  try {
+    Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] })
+  } catch { /* ignore */ }
+
   // ── Canvas noise ──────────────────────────────────────────────────────────────
   const origToDataURL = HTMLCanvasElement.prototype.toDataURL
   HTMLCanvasElement.prototype.toDataURL = function (type?: string, quality?: number) {

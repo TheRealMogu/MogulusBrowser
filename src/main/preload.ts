@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('window:state', h)
   },
   getVersion: () => ipcRenderer.invoke('app:version'),
+  newWindow: () => ipcRenderer.invoke('window:new'),
 
   // ── Privacy / tracker counting ─────────────────────────────────────────
   registerTabWebview: (tabId: string, webContentsId: number) =>
@@ -60,6 +61,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getBookmarks: () => ipcRenderer.invoke('bookmarks:get'),
   isBookmarked: (url: string): Promise<boolean> =>
     ipcRenderer.invoke('bookmarks:is-bookmarked', url),
+  importBookmarks: (): Promise<number> =>
+    ipcRenderer.invoke('bookmarks:import-from-file'),
 
   // ── Downloads ──────────────────────────────────────────────────────────
   getDownloads: () => ipcRenderer.invoke('downloads:get'),
@@ -88,4 +91,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('settings:get'),
   setSetting: (key: string, value: unknown): Promise<void> =>
     ipcRenderer.invoke('settings:set', key, value),
+
+  // ── Extensions ────────────────────────────────────────────────────────
+  listExtensions: () => ipcRenderer.invoke('extensions:list'),
+  installExtension: () => ipcRenderer.invoke('extensions:install'),
+  removeExtension: (id: string) => ipcRenderer.invoke('extensions:remove', id),
+
+  // ── Permissions ────────────────────────────────────────────────────────
+  onPermissionRequest: (cb: (data: { domain: string; permission: string }) => void): Unlisten => {
+    const h = (_: Electron.IpcRendererEvent, data: { domain: string; permission: string }) => cb(data)
+    ipcRenderer.on('permission:request', h)
+    return () => ipcRenderer.removeListener('permission:request', h)
+  },
+  getSitePermissions: (domain: string) => ipcRenderer.invoke('permissions:get-site', domain),
+  setSitePermission: (domain: string, permission: string, status: string) =>
+    ipcRenderer.invoke('permissions:set-site', domain, permission, status),
+  clearPermissions: () => ipcRenderer.invoke('permissions:clear'),
 })
