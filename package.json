@@ -1,0 +1,60 @@
+{
+  "name": "mogulus-browser",
+  "version": "0.1.0",
+  "description": "A personal, modern desktop browser built on Electron",
+  "main": "dist/main/main.js",
+  "scripts": {
+    "dev": "concurrently -n VITE,ELECTRON -c cyan,yellow \"npm run dev:renderer\" \"npm run dev:main\"",
+    "dev:renderer": "vite --port 5174",
+    "dev:main": "wait-on http://localhost:5174 && tsc -p tsconfig.main.json && electron .",
+    "start": "npm run build && electron .",
+    "build": "npm run build:renderer && npm run build:main",
+    "build:renderer": "vite build",
+    "build:main": "tsc -p tsconfig.main.json",
+    "pack": "npm run build && electron-builder",
+    "lint": "eslint src --ext .ts,.tsx"
+  },
+  "keywords": ["browser", "electron", "desktop"],
+  "author": "TheRealMogu",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@types/node": "^20.14.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "concurrently": "^8.2.2",
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3",
+    "typescript": "^5.5.2",
+    "vite": "^5.3.1",
+    "vite-plugin-electron": "^0.28.7",
+    "wait-on": "^7.2.0"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "build": {
+    "appId": "com.mogu.mogulus-browser",
+    "productName": "Mogulus",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "assets/**/*"
+    ],
+    "linux": {
+      "target": "AppImage",
+      "icon": "assets/icons"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "assets/icons/icon.icns"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icons/icon.ico"
+    }
+  }
+}

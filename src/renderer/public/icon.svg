@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="g1" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#9d7aff"/>
+      <stop offset="100%" stop-color="#5c3bcc"/>
+    </linearGradient>
+    <linearGradient id="g2" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#c4a8ff"/>
+      <stop offset="100%" stop-color="#7c5cfc"/>
+    </linearGradient>
+  </defs>
+  <!-- Outer ring -->
+  <circle cx="32" cy="32" r="29" stroke="url(#g1)" stroke-width="2.5" opacity="0.3"/>
+  <!-- Globe meridian lines -->
+  <ellipse cx="32" cy="32" rx="12" ry="29" stroke="url(#g1)" stroke-width="1.8" opacity="0.5"/>
+  <!-- Horizontal bands -->
+  <path d="M4 32h56" stroke="url(#g1)" stroke-width="1.5" opacity="0.4"/>
+  <path d="M7 20 Q32 14 57 20" stroke="url(#g1)" stroke-width="1.2" opacity="0.35"/>
+  <path d="M7 44 Q32 50 57 44" stroke="url(#g1)" stroke-width="1.2" opacity="0.35"/>
+  <!-- Filled globe -->
+  <circle cx="32" cy="32" r="18" fill="url(#g1)" opacity="0.15"/>
+  <!-- Speed accent arc -->
+  <path d="M14 32 A18 18 0 0 1 50 32" stroke="url(#g2)" stroke-width="3" stroke-linecap="round"/>
+  <!-- Center dot -->
+  <circle cx="32" cy="32" r="4.5" fill="url(#g2)"/>
+  <circle cx="32" cy="32" r="2" fill="white" opacity="0.9"/>
+</svg>
