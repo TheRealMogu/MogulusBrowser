@@ -107,4 +107,34 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setSitePermission: (domain: string, permission: string, status: string) =>
     ipcRenderer.invoke('permissions:set-site', domain, permission, status),
   clearPermissions: () => ipcRenderer.invoke('permissions:clear'),
+
+  // ── Auto-updater ───────────────────────────────────────────────────────
+  checkForUpdates: (): Promise<void> => ipcRenderer.invoke('update:check'),
+  downloadUpdate: (): Promise<void> => ipcRenderer.invoke('update:download'),
+  installUpdate: (): void => ipcRenderer.send('update:install'),
+  onUpdateAvailable: (cb: (info: { version: string }) => void): Unlisten => {
+    const h = (_: Electron.IpcRendererEvent, info: { version: string }) => cb(info)
+    ipcRenderer.on('update:available', h)
+    return () => ipcRenderer.removeListener('update:available', h)
+  },
+  onUpdateNotAvailable: (cb: () => void): Unlisten => {
+    const h = () => cb()
+    ipcRenderer.on('update:not-available', h)
+    return () => ipcRenderer.removeListener('update:not-available', h)
+  },
+  onUpdateProgress: (cb: (p: { percent: number; transferred: number; total: number }) => void): Unlisten => {
+    const h = (_: Electron.IpcRendererEvent, p: { percent: number; transferred: number; total: number }) => cb(p)
+    ipcRenderer.on('update:progress', h)
+    return () => ipcRenderer.removeListener('update:progress', h)
+  },
+  onUpdateDownloaded: (cb: (info: { version: string }) => void): Unlisten => {
+    const h = (_: Electron.IpcRendererEvent, info: { version: string }) => cb(info)
+    ipcRenderer.on('update:downloaded', h)
+    return () => ipcRenderer.removeListener('update:downloaded', h)
+  },
+  onUpdateError: (cb: (message: string) => void): Unlisten => {
+    const h = (_: Electron.IpcRendererEvent, message: string) => cb(message)
+    ipcRenderer.on('update:error', h)
+    return () => ipcRenderer.removeListener('update:error', h)
+  },
 })

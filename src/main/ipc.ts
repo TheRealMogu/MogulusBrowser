@@ -9,6 +9,7 @@ import { getAllDownloads } from './downloads'
 import { getSettings, setSetting } from './settings'
 import { listExtensions, installExtension, removeExtension } from './extensions'
 import { getSitePermissions, setSitePermission, clearPermissions } from './permissions'
+import { checkForUpdates, downloadUpdate, installUpdate } from './updater'
 
 // ── Global handler registry (prevent double-registration across windows) ────
 const handlerSet = new Set<string>()
@@ -128,6 +129,15 @@ export function setupIpcHandlers(win: BrowserWindow) {
     setSitePermission(domain, permission, status as 'allow' | 'deny' | 'ask')
   })
   once('permissions:clear', () => clearPermissions())
+
+  once('update:check', async () => {
+    try { await checkForUpdates() } catch { /* ignore */ }
+  })
+  once('update:download', async () => {
+    try { await downloadUpdate() } catch { /* ignore */ }
+  })
+  ipcMain.removeAllListeners('update:install')
+  ipcMain.on('update:install', () => installUpdate())
 
   once('window:new', () => {
     const newWin = new BrowserWindow({

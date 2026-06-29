@@ -1545,6 +1545,8 @@ html, body, #root {
   align-self: flex-start;
 }
 .settings-btn:hover { background: var(--bg-active); color: var(--text-primary); }
+.settings-btn--primary { background: var(--accent); color: #fff; border-color: transparent; }
+.settings-btn--primary:hover { background: var(--accent-hover, #6b44e8); color: #fff; }
 
 /* ── Reading mode ─────────────────────────────────────────────────────────────── */
 .reading-mode {

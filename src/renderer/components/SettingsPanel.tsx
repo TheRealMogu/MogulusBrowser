@@ -1,5 +1,14 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import type { AppSettings } from '../types/electron'
+
+type UpdateStatus =
+  | 'idle'
+  | 'checking'
+  | 'available'
+  | 'downloading'
+  | 'downloaded'
+  | 'up-to-date'
+  | 'error'
 
 const SEARCH_ENGINES = [
   { value: 'brave', label: 'Brave Search' },
@@ -13,12 +22,53 @@ const SEARCH_ENGINES = [
 export default function SettingsPanel({ onClose }: { onClose: () => void }) {
   const [settings, setSettings] = useState<Partial<AppSettings>>({})
   const [loaded, setLoaded] = useState(false)
+  const [version, setVersion] = useState('')
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus>('idle')
+  const [updateVersion, setUpdateVersion] = useState('')
+  const [updatePercent, setUpdatePercent] = useState(0)
+  const [updateError, setUpdateError] = useState('')
 
   useEffect(() => {
-    window.electronAPI?.getSettings().then(s => {
-      setSettings(s)
-      setLoaded(true)
-    })
+    window.electronAPI?.getSettings().then(s => { setSettings(s); setLoaded(true) })
+    window.electronAPI?.getVersion().then(v => setVersion(v))
+  }, [])
+
+  useEffect(() => {
+    const unlisten = [
+      window.electronAPI?.onUpdateAvailable(info => {
+        setUpdateStatus('available')
+        setUpdateVersion(info.version)
+      }),
+      window.electronAPI?.onUpdateNotAvailable(() => setUpdateStatus('up-to-date')),
+      window.electronAPI?.onUpdateProgress(p => {
+        setUpdateStatus('downloading')
+        setUpdatePercent(p.percent)
+      }),
+      window.electronAPI?.onUpdateDownloaded(info => {
+        setUpdateStatus('downloaded')
+        setUpdateVersion(info.version)
+      }),
+      window.electronAPI?.onUpdateError(msg => {
+        setUpdateStatus('error')
+        setUpdateError(msg)
+      }),
+    ]
+    return () => { unlisten.forEach(fn => fn?.()) }
+  }, [])
+
+  const handleCheckUpdate = useCallback(async () => {
+    setUpdateStatus('checking')
+    setUpdateError('')
+    try { await window.electronAPI?.checkForUpdates() } catch { setUpdateStatus('error') }
+  }, [])
+
+  const handleDownload = useCallback(async () => {
+    setUpdateStatus('downloading')
+    try { await window.electronAPI?.downloadUpdate() } catch { setUpdateStatus('error') }
+  }, [])
+
+  const handleInstall = useCallback(() => {
+    window.electronAPI?.installUpdate()
   }, [])
 
   const update = async (key: keyof AppSettings, value: unknown) => {
@@ -106,12 +156,58 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
 
           <section className="settings-section">
             <h3 className="settings-section-title">About</h3>
-            <button className="settings-btn" onClick={async () => {
-              const v = await window.electronAPI?.getVersion()
-              alert(`Mogulus Browser v${v}`)
-            }}>
-              Check Version
-            </button>
+            <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '10px' }}>
+              Mogulus Browser {version ? `v${version}` : ''}
+            </p>
+
+            {updateStatus === 'idle' && (
+              <button className="settings-btn" onClick={handleCheckUpdate}>
+                Check for Updates
+              </button>
+            )}
+            {updateStatus === 'checking' && (
+              <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Checking for updates…</span>
+            )}
+            {updateStatus === 'up-to-date' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>You are on the latest version.</span>
+                <button className="settings-btn" style={{ padding: '4px 10px', fontSize: '12px' }} onClick={handleCheckUpdate}>
+                  Check again
+                </button>
+              </div>
+            )}
+            {updateStatus === 'available' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <span style={{ fontSize: '13px', color: 'var(--accent)' }}>Update available: v{updateVersion}</span>
+                <button className="settings-btn settings-btn--primary" onClick={handleDownload}>
+                  Download Update
+                </button>
+              </div>
+            )}
+            {updateStatus === 'downloading' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Downloading… {updatePercent}%</span>
+                <div style={{ height: '4px', background: 'var(--bg-tertiary)', borderRadius: '2px', overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${updatePercent}%`, background: 'var(--accent)', transition: 'width 0.3s' }} />
+                </div>
+              </div>
+            )}
+            {updateStatus === 'downloaded' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <span style={{ fontSize: '13px', color: 'var(--accent)' }}>v{updateVersion} ready to install.</span>
+                <button className="settings-btn settings-btn--primary" onClick={handleInstall}>
+                  Restart &amp; Install
+                </button>
+              </div>
+            )}
+            {updateStatus === 'error' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                  {updateError || 'Update check failed.'}
+                </span>
+                <button className="settings-btn" onClick={handleCheckUpdate}>Retry</button>
+              </div>
+            )}
           </section>
         </div>
       </div>

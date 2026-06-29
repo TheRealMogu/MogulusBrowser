@@ -8,6 +8,7 @@ import { initBookmarks } from './bookmarks'
 import { initSettings } from './settings'
 import { initPermissions } from './permissions'
 import { loadAllExtensions } from './extensions'
+import { initUpdater } from './updater'
 
 configureDoH('cloudflare')
 app.commandLine.appendSwitch('disable-background-networking', 'false')
@@ -64,6 +65,7 @@ app.whenReady().then(async () => {
   setMainWindow(win)
   setupIpcHandlers(win)
   initPermissions(win)
+  initUpdater(win)
   setupWebContentsPolicy()
   await loadAllExtensions()
   app.on('activate', () => {

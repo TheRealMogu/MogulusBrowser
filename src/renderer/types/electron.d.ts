@@ -100,6 +100,15 @@ declare global {
       getSitePermissions: (domain: string) => Promise<Record<string, string>>
       setSitePermission: (domain: string, permission: string, status: string) => Promise<void>
       clearPermissions: () => Promise<void>
+
+      checkForUpdates: () => Promise<void>
+      downloadUpdate: () => Promise<void>
+      installUpdate: () => void
+      onUpdateAvailable: (cb: (info: { version: string }) => void) => () => void
+      onUpdateNotAvailable: (cb: () => void) => () => void
+      onUpdateProgress: (cb: (p: { percent: number; transferred: number; total: number }) => void) => () => void
+      onUpdateDownloaded: (cb: (info: { version: string }) => void) => () => void
+      onUpdateError: (cb: (message: string) => void) => () => void
     }
   }
 }
