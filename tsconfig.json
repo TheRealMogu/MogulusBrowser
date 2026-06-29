@@ -5,6 +5,7 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
+    "types": ["electron"],
     "strict": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,

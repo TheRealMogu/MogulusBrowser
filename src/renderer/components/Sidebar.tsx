@@ -1,6 +1,9 @@
-import React, { useState } from 'react'
+import React, { useState, useRef } from 'react'
 import { useBrowser } from '../store/BrowserContext'
-import { Tab, Workspace } from '../store/browserStore'
+import { Tab, Workspace, SidebarView } from '../store/browserStore'
+import type { Bookmark, HistoryEntry } from '../types/electron'
+import DownloadPanel from './DownloadPanel'
+import ExtensionsPanel from './ExtensionsPanel'
 
 export default function Sidebar() {
   const {
@@ -14,32 +17,46 @@ export default function Sidebar() {
     closeTab,
     pinTab,
     sidebarCollapsed,
+    sidebarView,
+    setSidebarView,
     toggleSidebar,
     addWorkspace,
     closeWorkspace,
+    bookmarks,
+    history,
+    navigateTo,
+    toggleBookmark,
+    clearAllHistory,
+    downloads,
+    downloadPanelOpen,
+    closeDownloadPanel,
+    splitTabId,
+    setSplitTabId,
     HOME_URL,
+    reorderTabs,
   } = useBrowser()
 
   const isMac = window.electronAPI?.platform === 'darwin'
-  const [renamingWsId, setRenamingWsId] = useState<string | null>(null)
-  const [renameValue, setRenameValue] = useState('')
 
   const pinnedTabs = activeTabs.filter(t => t.isPinned)
   const regularTabs = activeTabs.filter(t => !t.isPinned)
 
+  const dragTabIdx = useRef<number | null>(null)
+
+  const openInTab = (url: string) => {
+    addTab(url)
+    setSidebarView('tabs')
+  }
+
   return (
     <aside className={`sidebar${sidebarCollapsed ? ' sidebar--collapsed' : ''}`}>
-      {/* ── Header / Logo ── */}
+      {/* ── Header ── */}
       <div className={`sidebar-header${isMac ? ' sidebar-header--mac' : ''}`}>
         <div className="sidebar-logo">
           <img src="./icon.svg" alt="Mogulus" width={20} height={20} />
           {!sidebarCollapsed && <span className="sidebar-brand">Mogulus</span>}
         </div>
-        <button
-          className="sidebar-toggle"
-          onClick={toggleSidebar}
-          title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        >
+        <button className="sidebar-toggle" onClick={toggleSidebar} title={sidebarCollapsed ? 'Expand' : 'Collapse'}>
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
             {sidebarCollapsed ? (
               <path d="M5 2l5 5-5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
@@ -50,7 +67,18 @@ export default function Sidebar() {
         </button>
       </div>
 
-      {/* ── Workspace tabs ── */}
+      {/* ── View switcher (icon rail) ── */}
+      {!sidebarCollapsed && (
+        <div className="sidebar-view-switcher">
+          <ViewBtn icon="tabs"      active={sidebarView === 'tabs'}      label="Tabs"      onClick={() => setSidebarView('tabs')} />
+          <ViewBtn icon="bookmarks" active={sidebarView === 'bookmarks'} label="Bookmarks" onClick={() => setSidebarView('bookmarks')} />
+          <ViewBtn icon="history"   active={sidebarView === 'history'}   label="History"   onClick={() => setSidebarView('history')} />
+          <ViewBtn icon="downloads"   active={sidebarView === 'downloads'}   label="Downloads"   onClick={() => setSidebarView('downloads')} />
+          <ViewBtn icon="extensions"  active={sidebarView === 'extensions'}  label="Extensions"  onClick={() => setSidebarView('extensions')} />
+        </div>
+      )}
+
+      {/* ── Workspaces ── */}
       <div className="sidebar-workspaces">
         {workspaces.map(ws => (
           <WorkspaceItem
@@ -60,15 +88,10 @@ export default function Sidebar() {
             collapsed={sidebarCollapsed}
             onClick={() => setActiveWorkspaceId(ws.id)}
             onClose={workspaces.length > 1 ? () => closeWorkspace(ws.id) : undefined}
-            onRename={() => { setRenamingWsId(ws.id); setRenameValue(ws.name) }}
           />
         ))}
         {!sidebarCollapsed && (
-          <button
-            className="workspace-add"
-            onClick={() => addWorkspace('New Space')}
-            title="New workspace"
-          >
+          <button className="workspace-add" onClick={() => addWorkspace('New Space')} title="New workspace">
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
               <path d="M6 1v10M1 6h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
             </svg>
@@ -79,87 +102,265 @@ export default function Sidebar() {
 
       <div className="sidebar-divider" />
 
-      {/* ── Pinned tabs ── */}
-      {pinnedTabs.length > 0 && (
-        <div className="sidebar-section">
-          {!sidebarCollapsed && <span className="sidebar-section-label">Pinned</span>}
-          <div className="sidebar-tabs">
-            {pinnedTabs.map(tab => (
-              <SidebarTab
-                key={tab.id}
-                tab={tab}
-                active={tab.id === activeTab?.id}
-                collapsed={sidebarCollapsed}
-                onClick={() => setActiveTab(tab.id)}
-                onClose={() => closeTab(tab.id)}
-                onPin={() => pinTab(tab.id)}
-              />
-            ))}
+      {/* ── Content views ── */}
+      {(sidebarView === 'tabs' || sidebarCollapsed) && (
+        <>
+          {pinnedTabs.length > 0 && (
+            <div className="sidebar-section">
+              {!sidebarCollapsed && <span className="sidebar-section-label">Pinned</span>}
+              <div className="sidebar-tabs">
+                {pinnedTabs.map(tab => (
+                  <SidebarTab key={tab.id} tab={tab} active={tab.id === activeTab?.id}
+                    collapsed={sidebarCollapsed} onClick={() => setActiveTab(tab.id)}
+                    onClose={() => closeTab(tab.id)} onPin={() => pinTab(tab.id)}
+                    isSplit={tab.id === splitTabId}
+                    onSplit={() => setSplitTabId(tab.id === splitTabId ? null : tab.id)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="sidebar-tabs-scroll">
+            <div className="sidebar-tabs">
+              {regularTabs.map((tab, idx) => (
+                <SidebarTab key={tab.id} tab={tab} active={tab.id === activeTab?.id}
+                  collapsed={sidebarCollapsed} onClick={() => setActiveTab(tab.id)}
+                  onClose={() => closeTab(tab.id)} onPin={() => pinTab(tab.id)}
+                  isSplit={tab.id === splitTabId}
+                  onSplit={() => setSplitTabId(tab.id === splitTabId ? null : tab.id)}
+                  draggable
+                  onDragStart={() => { dragTabIdx.current = pinnedTabs.length + idx }}
+                  onDragOver={e => e.preventDefault()}
+                  onDrop={() => {
+                    const from = dragTabIdx.current
+                    const to = pinnedTabs.length + idx
+                    if (from !== null && from !== to) reorderTabs(from, to)
+                    dragTabIdx.current = null
+                  }}
+                />
+              ))}
+            </div>
           </div>
-        </div>
+        </>
       )}
 
-      {/* ── Regular tabs ── */}
-      <div className="sidebar-tabs-scroll">
-        <div className="sidebar-tabs">
-          {regularTabs.map(tab => (
-            <SidebarTab
-              key={tab.id}
-              tab={tab}
-              active={tab.id === activeTab?.id}
-              collapsed={sidebarCollapsed}
-              onClick={() => setActiveTab(tab.id)}
-              onClose={() => closeTab(tab.id)}
-              onPin={() => pinTab(tab.id)}
-            />
-          ))}
-        </div>
-      </div>
+      {sidebarView === 'bookmarks' && !sidebarCollapsed && (
+        <BookmarksPanel
+          bookmarks={bookmarks}
+          onOpen={openInTab}
+          onRemove={(bm) => toggleBookmark(bm.url, bm.title, bm.favicon)}
+        />
+      )}
 
-      {/* ── Bottom actions ── */}
+      {sidebarView === 'history' && !sidebarCollapsed && (
+        <HistoryPanel
+          history={history}
+          onOpen={openInTab}
+          onClear={clearAllHistory}
+        />
+      )}
+
+      {sidebarView === 'downloads' && !sidebarCollapsed && (
+        <DownloadPanel downloads={downloads} />
+      )}
+
+      {sidebarView === 'extensions' && !sidebarCollapsed && (
+        <ExtensionsPanel />
+      )}
+
+      {/* ── Footer ── */}
       <div className="sidebar-footer">
-        <button
-          className="sidebar-action"
-          onClick={() => addTab()}
-          title="New tab (⌘T)"
-        >
+        <button className="sidebar-action" onClick={() => addTab()} title="New tab (⌘T)">
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
             <path d="M7 1v12M1 7h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
           </svg>
           {!sidebarCollapsed && <span>New Tab</span>}
         </button>
-        <button
-          className="sidebar-action sidebar-action--private"
+        <button className="sidebar-action sidebar-action--private"
           onClick={() => addWorkspace('Private', '#ef4444', true)}
-          title="New private workspace"
-        >
+          title="New private workspace">
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
             <rect x="2" y="6" width="10" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.2"/>
             <path d="M4.5 6V4.5a2.5 2.5 0 0 1 5 0V6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
           </svg>
           {!sidebarCollapsed && <span>Private</span>}
         </button>
+        <button className="sidebar-action" onClick={() => window.electronAPI?.newWindow()} title="New window (⌘N)">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <rect x="1" y="3" width="12" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.2"/>
+            <path d="M1 6h12" stroke="currentColor" strokeWidth="1.2"/>
+            <rect x="3.5" y="1" width="5" height="2.5" rx="1" stroke="currentColor" strokeWidth="1.1"/>
+          </svg>
+          {!sidebarCollapsed && <span>New Window</span>}
+        </button>
       </div>
     </aside>
   )
 }
 
+// ── ViewBtn ───────────────────────────────────────────────────────────────────
+
+function ViewBtn({ icon, active, label, onClick }: { icon: string; active: boolean; label: string; onClick: () => void }) {
+  const icons: Record<string, React.ReactNode> = {
+    tabs: (
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+        <rect x="1" y="4" width="12" height="9" rx="1.5" stroke="currentColor" strokeWidth="1.2"/>
+        <path d="M1 7h12" stroke="currentColor" strokeWidth="1.2"/>
+        <rect x="1" y="1" width="5" height="3" rx="1" stroke="currentColor" strokeWidth="1.2"/>
+      </svg>
+    ),
+    bookmarks: (
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+        <path d="M3 1h8a1 1 0 0 1 1 1v11l-5-3-5 3V2a1 1 0 0 1 1-1z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" fill={active ? 'currentColor' : 'none'}/>
+      </svg>
+    ),
+    history: (
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+        <circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth="1.2"/>
+        <path d="M7 4v3.5L9.5 9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    ),
+    downloads: (
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+        <path d="M7 1v8M4 6l3 3 3-3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+        <path d="M1 12h12" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+      </svg>
+    ),
+    extensions: (
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+        <rect x="1" y="5" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.2"/>
+        <rect x="8" y="5" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.2"/>
+        <rect x="1" y="1" width="5" height="3" rx="1" stroke="currentColor" strokeWidth="1.2"/>
+        <rect x="8" y="1" width="5" height="3" rx="1" stroke="currentColor" strokeWidth="1.2"/>
+      </svg>
+    ),
+  }
+  return (
+    <button
+      className={`sidebar-view-btn${active ? ' sidebar-view-btn--active' : ''}`}
+      onClick={onClick}
+      title={label}
+    >
+      {icons[icon]}
+    </button>
+  )
+}
+
+// ── BookmarksPanel ────────────────────────────────────────────────────────────
+
+function BookmarksPanel({ bookmarks, onOpen, onRemove }: {
+  bookmarks: Bookmark[]
+  onOpen: (url: string) => void
+  onRemove: (bm: Bookmark) => void
+}) {
+  const [importing, setImporting] = useState(false)
+
+  const handleImport = async () => {
+    setImporting(true)
+    try {
+      const count = await window.electronAPI?.importBookmarks()
+      if (count != null && count > 0) alert(`Imported ${count} bookmarks.`)
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  return (
+    <div className="sidebar-panel">
+      <div className="sidebar-panel-header">
+        <span>Bookmarks</span>
+        <button className="sidebar-panel-action" onClick={handleImport} disabled={importing} title="Import from Chrome/HTML">
+          {importing ? '…' : 'Import'}
+        </button>
+      </div>
+      {bookmarks.length === 0 ? (
+        <p className="sidebar-panel-empty">No bookmarks yet.<br/>Click ⭐ in the URL bar to add one.</p>
+      ) : (
+        <div className="sidebar-panel-list">
+          {bookmarks.map(bm => (
+            <div key={bm.id} className="sidebar-panel-item" onClick={() => onOpen(bm.url)} title={bm.url}>
+              {bm.favicon
+                ? <img src={bm.favicon} alt="" width={14} height={14} style={{ borderRadius: 2, flexShrink: 0 }} />
+                : <GlobeIcon />
+              }
+              <span className="sidebar-panel-item-title">{bm.title || bm.url}</span>
+              <button className="sidebar-panel-item-remove" onClick={e => { e.stopPropagation(); onRemove(bm) }} title="Remove">
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                  <path d="M1 1l8 8M9 1L1 9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                </svg>
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── HistoryPanel ──────────────────────────────────────────────────────────────
+
+function HistoryPanel({ history, onOpen, onClear }: {
+  history: HistoryEntry[]
+  onOpen: (url: string) => void
+  onClear: () => void
+}) {
+  const [query, setQuery] = useState('')
+  const filtered = query
+    ? history.filter(e => e.url.toLowerCase().includes(query.toLowerCase()) || e.title.toLowerCase().includes(query.toLowerCase()))
+    : history
+
+  const fmt = (ts: number) => {
+    const d = new Date(ts)
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' ' +
+           d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+  }
+
+  return (
+    <div className="sidebar-panel">
+      <div className="sidebar-panel-header">
+        <span>History</span>
+        <button className="sidebar-panel-action" onClick={onClear} title="Clear history">Clear</button>
+      </div>
+      <input
+        className="sidebar-panel-search"
+        placeholder="Search history…"
+        value={query}
+        onChange={e => setQuery(e.target.value)}
+      />
+      {filtered.length === 0 ? (
+        <p className="sidebar-panel-empty">No history yet.</p>
+      ) : (
+        <div className="sidebar-panel-list">
+          {filtered.map(e => (
+            <div key={e.id} className="sidebar-panel-item" onClick={() => onOpen(e.url)} title={e.url}>
+              {e.favicon
+                ? <img src={e.favicon} alt="" width={14} height={14} style={{ borderRadius: 2, flexShrink: 0 }} />
+                : <GlobeIcon />
+              }
+              <div className="sidebar-panel-item-info">
+                <span className="sidebar-panel-item-title">{e.title || e.url}</span>
+                <span className="sidebar-panel-item-meta">{fmt(e.visitedAt)}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+const GlobeIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0 }}>
+    <circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth="1.1"/>
+  </svg>
+)
+
 // ── WorkspaceItem ─────────────────────────────────────────────────────────────
 
-function WorkspaceItem({
-  ws,
-  active,
-  collapsed,
-  onClick,
-  onClose,
-  onRename,
-}: {
-  ws: Workspace
-  active: boolean
-  collapsed: boolean
-  onClick: () => void
-  onClose?: () => void
-  onRename: () => void
+function WorkspaceItem({ ws, active, collapsed, onClick, onClose }: {
+  ws: Workspace; active: boolean; collapsed: boolean
+  onClick: () => void; onClose?: () => void
 }) {
   return (
     <button
@@ -179,10 +380,7 @@ function WorkspaceItem({
             </svg>
           )}
           {onClose && (
-            <button
-              className="workspace-close"
-              onClick={e => { e.stopPropagation(); onClose() }}
-            >
+            <button className="workspace-close" onClick={e => { e.stopPropagation(); onClose() }}>
               <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
                 <path d="M1 1l6 6M7 1L1 7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
               </svg>
@@ -196,26 +394,21 @@ function WorkspaceItem({
 
 // ── SidebarTab ────────────────────────────────────────────────────────────────
 
-function SidebarTab({
-  tab,
-  active,
-  collapsed,
-  onClick,
-  onClose,
-  onPin,
-}: {
-  tab: Tab
-  active: boolean
-  collapsed: boolean
-  onClick: () => void
-  onClose: () => void
-  onPin: () => void
+function SidebarTab({ tab, active, collapsed, onClick, onClose, onPin, isSplit, onSplit, draggable, onDragStart, onDragOver, onDrop }: {
+  tab: Tab; active: boolean; collapsed: boolean
+  onClick: () => void; onClose: () => void; onPin: () => void
+  isSplit: boolean; onSplit: () => void
+  draggable?: boolean; onDragStart?: () => void; onDragOver?: (e: React.DragEvent) => void; onDrop?: () => void
 }) {
   return (
     <div
-      className={`sidebar-tab${active ? ' sidebar-tab--active' : ''}${tab.isPinned ? ' sidebar-tab--pinned' : ''}`}
+      className={`sidebar-tab${active ? ' sidebar-tab--active' : ''}${tab.isPinned ? ' sidebar-tab--pinned' : ''}${isSplit ? ' sidebar-tab--split' : ''}`}
       onClick={onClick}
       title={tab.title}
+      draggable={draggable}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
     >
       <div className="sidebar-tab-icon">
         {tab.isLoading ? (
@@ -237,10 +430,16 @@ function SidebarTab({
             </span>
           )}
           <button
-            className="sidebar-tab-close"
-            onClick={e => { e.stopPropagation(); onClose() }}
-            title="Close tab"
+            className={`sidebar-tab-split${isSplit ? ' sidebar-tab-split--active' : ''}`}
+            onClick={e => { e.stopPropagation(); onSplit() }}
+            title={isSplit ? 'Exit split view' : 'Open in split view'}
           >
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+              <rect x="0.5" y="0.5" width="9" height="9" rx="1" stroke="currentColor" strokeWidth="1"/>
+              <path d="M5 1v8" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>
+            </svg>
+          </button>
+          <button className="sidebar-tab-close" onClick={e => { e.stopPropagation(); onClose() }} title="Close tab">
             <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
               <path d="M1 1l8 8M9 1L1 9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
             </svg>

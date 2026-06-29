@@ -1,10 +1,11 @@
-import React, { useEffect } from 'react'
+import React from 'react'
 import { BrowserProvider } from './store/BrowserContext'
 import { useBrowser } from './store/BrowserContext'
 import Sidebar from './components/Sidebar'
 import NavigationBar from './components/NavigationBar'
 import WebViewContainer from './components/WebView'
 import CommandPalette from './components/CommandPalette'
+import SettingsPanel from './components/SettingsPanel'
 import './styles/global.css'
 
 function BrowserShell() {
@@ -12,9 +13,10 @@ function BrowserShell() {
     commandPaletteOpen,
     activeWorkspace,
     sidebarCollapsed,
+    settingsPanelOpen,
+    toggleSettings,
   } = useBrowser()
 
-  // Apply workspace accent color as a CSS variable on the root
   const accent = activeWorkspace?.accentColor ?? '#7c5cfc'
   const isPrivate = activeWorkspace?.isPrivate ?? false
 
@@ -35,6 +37,7 @@ function BrowserShell() {
         <WebViewContainer />
       </div>
       {commandPaletteOpen && <CommandPalette />}
+      {settingsPanelOpen && <SettingsPanel onClose={toggleSettings} />}
     </div>
   )
 }
