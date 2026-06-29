@@ -16,8 +16,10 @@ export default function NavigationBar() {
     togglePrivacyPanel,
     closePrivacyPanel,
     downloads,
-    toggleDownloadPanel,
-    downloadPanelOpen,
+    sidebarView,
+    setSidebarView,
+    toggleSidebar,
+    sidebarCollapsed,
     toggleBookmark,
     isTabBookmarked,
     registerUrlBarFocus,
@@ -26,6 +28,7 @@ export default function NavigationBar() {
     resetZoom,
     toggleSettings,
     updateTab,
+    openFindBar,
   } = useBrowser()
 
   const [inputVal, setInputVal] = useState('')
@@ -41,6 +44,16 @@ export default function NavigationBar() {
   const activeDownloads = downloads.filter(d => d.state === 'progressing').length
   const zoom = activeTab?.zoom ?? 1.0
   const showZoom = zoom !== 1.0
+
+  const openDownloads = () => {
+    if (sidebarCollapsed) toggleSidebar()
+    setSidebarView('downloads')
+  }
+
+  const openHistory = () => {
+    if (sidebarCollapsed) toggleSidebar()
+    setSidebarView('history')
+  }
 
   // Register focus function with store so Cmd+L can trigger it
   useEffect(() => {
@@ -249,11 +262,28 @@ export default function NavigationBar() {
           </NavBtn>
         )}
 
+        {/* Find in page */}
+        <NavBtn onClick={openFindBar} title="Find in page (Ctrl+F)">
+          <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+            <circle cx="6.5" cy="6.5" r="4" stroke="currentColor" strokeWidth="1.4"/>
+            <path d="M10 10l3.5 3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+          </svg>
+        </NavBtn>
+
+        {/* History */}
+        <NavBtn onClick={openHistory} title="History" active={sidebarView === 'history' && !sidebarCollapsed}>
+          <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+            <path d="M7.5 4v3.5L10 9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M2 7.5A5.5 5.5 0 1 0 7.5 2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+            <path d="M2 3.5V7.5H6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </NavBtn>
+
         {/* Downloads button */}
         <NavBtn
-          onClick={toggleDownloadPanel}
+          onClick={openDownloads}
           title="Downloads"
-          active={downloadPanelOpen}
+          active={sidebarView === 'downloads' && !sidebarCollapsed}
         >
           <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
             <path d="M7.5 1v9M4 7l3.5 3.5L11 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
@@ -263,7 +293,7 @@ export default function NavigationBar() {
         </NavBtn>
 
         {/* Command palette button */}
-        <NavBtn onClick={openCommandPalette} title="Command Palette (⌘K)">
+        <NavBtn onClick={openCommandPalette} title="Command Palette (Ctrl+K)">
           <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
             <rect x="1" y="3" width="13" height="2" rx="1" fill="currentColor" opacity="0.7"/>
             <rect x="1" y="7" width="9" height="2" rx="1" fill="currentColor" opacity="0.7"/>
@@ -272,7 +302,7 @@ export default function NavigationBar() {
         </NavBtn>
 
         {/* Settings button */}
-        <NavBtn onClick={toggleSettings} title="Settings (⌘,)">
+        <NavBtn onClick={toggleSettings} title="Settings">
           <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
             <circle cx="7.5" cy="7.5" r="2" stroke="currentColor" strokeWidth="1.2"/>
             <path d="M7.5 1.5v1.2M7.5 12.3v1.2M1.5 7.5h1.2M12.3 7.5h1.2M3.4 3.4l.85.85M10.75 10.75l.85.85M3.4 11.6l.85-.85M10.75 4.25l.85-.85" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>

@@ -36,12 +36,12 @@
   --blue:   #3b82f6;
 
   /* Layout */
-  --sidebar-width:      220px;
-  --sidebar-rail-width:  52px;
-  --navbar-height:       44px;
+  --sidebar-width:      240px;
+  --sidebar-rail-width:  56px;
+  --navbar-height:       52px;
 
   font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', system-ui, sans-serif;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   color-scheme: dark;
@@ -434,13 +434,14 @@ html, body, #root {
   border: none;
   cursor: pointer;
   color: var(--text-secondary);
-  width: 32px;
-  height: 32px;
-  border-radius: 7px;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: background 0.1s, color 0.1s;
+  flex-shrink: 0;
 }
 .nav-btn:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-primary); }
 .nav-btn:disabled { color: var(--text-faint); cursor: default; }
@@ -454,8 +455,8 @@ html, body, #root {
   background: var(--bg-input);
   border: 1px solid var(--border);
   border-radius: 10px;
-  height: 32px;
-  padding: 0 10px;
+  height: 36px;
+  padding: 0 12px;
   cursor: text;
   transition: border-color 0.15s, box-shadow 0.15s;
   min-width: 0;
@@ -473,7 +474,7 @@ html, body, #root {
   border: none;
   outline: none;
   color: var(--text-primary);
-  font-size: 12.5px;
+  font-size: 13.5px;
   font-family: inherit;
   min-width: 0;
 }
