@@ -1,21 +1,30 @@
-import { app, BrowserWindow, ipcMain, shell, session } from 'electron'
+import { app, BrowserWindow, shell } from 'electron'
 import path from 'path'
 import { setupIpcHandlers } from './ipc'
+import { configureDoH, setMainWindow } from './privacy'
+import { setupDefaultSessions } from './sessions'
+import { initHistory } from './history'
+import { initBookmarks } from './bookmarks'
 
-const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
+// DoH must be configured before app is ready
+configureDoH('cloudflare')
+
+// Disable Electron's own update checks and telemetry
+app.commandLine.appendSwitch('disable-background-networking', 'false')
+app.commandLine.appendSwitch('no-pings')
+
+const isDev = process.env.NODE_ENV !== 'production' && !app.isPackaged
+const isMac = process.platform === 'darwin'
 
 function createMainWindow(): BrowserWindow {
   const win = new BrowserWindow({
     width: 1280,
     height: 800,
-    minWidth: 800,
+    minWidth: 860,
     minHeight: 600,
     titleBarStyle: 'hidden',
-    titleBarOverlay: {
-      color: '#0f0f11',
-      symbolColor: '#a0a0b0',
-      height: 40,
-    },
+    trafficLightPosition: isMac ? { x: 14, y: 14 } : undefined,
+    frame: isMac ? undefined : false,
     backgroundColor: '#0f0f11',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -23,9 +32,9 @@ function createMainWindow(): BrowserWindow {
       nodeIntegration: false,
       sandbox: false,
       webviewTag: true,
+      spellcheck: false,
     },
     show: false,
-    frame: process.platform !== 'darwin',
   })
 
   win.once('ready-to-show', () => win.show())
@@ -36,50 +45,57 @@ function createMainWindow(): BrowserWindow {
     win.loadFile(path.join(__dirname, '../renderer/index.html'))
   }
 
+  win.webContents.on('will-navigate', (event) => {
+    if (!isDev) event.preventDefault()
+  })
+
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url)
+    return { action: 'deny' }
+  })
+
   return win
 }
 
-function setupSecurityPolicy() {
-  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
-    callback({
-      responseHeaders: {
-        ...details.responseHeaders,
-      },
-    })
-  })
-
-  // Allow navigating to remote URLs in webviews but block dangerous schemes
+function setupWebContentsPolicy() {
   app.on('web-contents-created', (_, contents) => {
     contents.on('will-navigate', (event, url) => {
-      const allowedSchemes = ['https:', 'http:', 'about:', 'data:']
+      const allowedSchemes = ['https:', 'http:', 'about:', 'data:', 'blob:']
       try {
         const parsed = new URL(url)
-        if (!allowedSchemes.includes(parsed.protocol)) {
-          event.preventDefault()
-        }
+        if (!allowedSchemes.includes(parsed.protocol)) event.preventDefault()
       } catch {
         event.preventDefault()
       }
     })
 
-    // Open external links (target=_blank outside webview) in the OS browser
     contents.setWindowOpenHandler(({ url }) => {
-      shell.openExternal(url)
+      const wins = BrowserWindow.getAllWindows()
+      if (wins.length > 0) wins[0].webContents.send('tab:open-url', url)
       return { action: 'deny' }
     })
   })
 }
 
 app.whenReady().then(() => {
-  setupSecurityPolicy()
+  initHistory()
+  initBookmarks()
+
   const win = createMainWindow()
+  setupDefaultSessions(win)
+  setMainWindow(win)
   setupIpcHandlers(win)
+  setupWebContentsPolicy()
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createMainWindow()
+    if (BrowserWindow.getAllWindows().length === 0) {
+      const w = createMainWindow()
+      setMainWindow(w)
+      setupIpcHandlers(w)
+    }
   })
 })
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit()
+  if (!isMac) app.quit()
 })
