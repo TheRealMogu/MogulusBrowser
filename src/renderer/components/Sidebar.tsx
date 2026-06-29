@@ -1,8 +1,9 @@
-import React, { useState } from 'react'
+import React, { useState, useRef } from 'react'
 import { useBrowser } from '../store/BrowserContext'
 import { Tab, Workspace, SidebarView } from '../store/browserStore'
 import type { Bookmark, HistoryEntry } from '../types/electron'
 import DownloadPanel from './DownloadPanel'
+import ExtensionsPanel from './ExtensionsPanel'
 
 export default function Sidebar() {
   const {
@@ -32,12 +33,15 @@ export default function Sidebar() {
     splitTabId,
     setSplitTabId,
     HOME_URL,
+    reorderTabs,
   } = useBrowser()
 
   const isMac = window.electronAPI?.platform === 'darwin'
 
   const pinnedTabs = activeTabs.filter(t => t.isPinned)
   const regularTabs = activeTabs.filter(t => !t.isPinned)
+
+  const dragTabIdx = useRef<number | null>(null)
 
   const openInTab = (url: string) => {
     addTab(url)
@@ -69,7 +73,8 @@ export default function Sidebar() {
           <ViewBtn icon="tabs"      active={sidebarView === 'tabs'}      label="Tabs"      onClick={() => setSidebarView('tabs')} />
           <ViewBtn icon="bookmarks" active={sidebarView === 'bookmarks'} label="Bookmarks" onClick={() => setSidebarView('bookmarks')} />
           <ViewBtn icon="history"   active={sidebarView === 'history'}   label="History"   onClick={() => setSidebarView('history')} />
-          <ViewBtn icon="downloads" active={sidebarView === 'downloads'} label="Downloads" onClick={() => setSidebarView('downloads')} />
+          <ViewBtn icon="downloads"   active={sidebarView === 'downloads'}   label="Downloads"   onClick={() => setSidebarView('downloads')} />
+          <ViewBtn icon="extensions"  active={sidebarView === 'extensions'}  label="Extensions"  onClick={() => setSidebarView('extensions')} />
         </div>
       )}
 
@@ -118,12 +123,21 @@ export default function Sidebar() {
 
           <div className="sidebar-tabs-scroll">
             <div className="sidebar-tabs">
-              {regularTabs.map(tab => (
+              {regularTabs.map((tab, idx) => (
                 <SidebarTab key={tab.id} tab={tab} active={tab.id === activeTab?.id}
                   collapsed={sidebarCollapsed} onClick={() => setActiveTab(tab.id)}
                   onClose={() => closeTab(tab.id)} onPin={() => pinTab(tab.id)}
                   isSplit={tab.id === splitTabId}
                   onSplit={() => setSplitTabId(tab.id === splitTabId ? null : tab.id)}
+                  draggable
+                  onDragStart={() => { dragTabIdx.current = pinnedTabs.length + idx }}
+                  onDragOver={e => e.preventDefault()}
+                  onDrop={() => {
+                    const from = dragTabIdx.current
+                    const to = pinnedTabs.length + idx
+                    if (from !== null && from !== to) reorderTabs(from, to)
+                    dragTabIdx.current = null
+                  }}
                 />
               ))}
             </div>
@@ -151,6 +165,10 @@ export default function Sidebar() {
         <DownloadPanel downloads={downloads} />
       )}
 
+      {sidebarView === 'extensions' && !sidebarCollapsed && (
+        <ExtensionsPanel />
+      )}
+
       {/* ── Footer ── */}
       <div className="sidebar-footer">
         <button className="sidebar-action" onClick={() => addTab()} title="New tab (⌘T)">
@@ -167,6 +185,14 @@ export default function Sidebar() {
             <path d="M4.5 6V4.5a2.5 2.5 0 0 1 5 0V6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
           </svg>
           {!sidebarCollapsed && <span>Private</span>}
+        </button>
+        <button className="sidebar-action" onClick={() => window.electronAPI?.newWindow()} title="New window (⌘N)">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <rect x="1" y="3" width="12" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.2"/>
+            <path d="M1 6h12" stroke="currentColor" strokeWidth="1.2"/>
+            <rect x="3.5" y="1" width="5" height="2.5" rx="1" stroke="currentColor" strokeWidth="1.1"/>
+          </svg>
+          {!sidebarCollapsed && <span>New Window</span>}
         </button>
       </div>
     </aside>
@@ -201,6 +227,14 @@ function ViewBtn({ icon, active, label, onClick }: { icon: string; active: boole
         <path d="M1 12h12" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
       </svg>
     ),
+    extensions: (
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+        <rect x="1" y="5" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.2"/>
+        <rect x="8" y="5" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.2"/>
+        <rect x="1" y="1" width="5" height="3" rx="1" stroke="currentColor" strokeWidth="1.2"/>
+        <rect x="8" y="1" width="5" height="3" rx="1" stroke="currentColor" strokeWidth="1.2"/>
+      </svg>
+    ),
   }
   return (
     <button
@@ -220,11 +254,25 @@ function BookmarksPanel({ bookmarks, onOpen, onRemove }: {
   onOpen: (url: string) => void
   onRemove: (bm: Bookmark) => void
 }) {
+  const [importing, setImporting] = useState(false)
+
+  const handleImport = async () => {
+    setImporting(true)
+    try {
+      const count = await window.electronAPI?.importBookmarks()
+      if (count != null && count > 0) alert(`Imported ${count} bookmarks.`)
+    } finally {
+      setImporting(false)
+    }
+  }
+
   return (
     <div className="sidebar-panel">
       <div className="sidebar-panel-header">
         <span>Bookmarks</span>
-        <span className="sidebar-panel-count">{bookmarks.length}</span>
+        <button className="sidebar-panel-action" onClick={handleImport} disabled={importing} title="Import from Chrome/HTML">
+          {importing ? '…' : 'Import'}
+        </button>
       </div>
       {bookmarks.length === 0 ? (
         <p className="sidebar-panel-empty">No bookmarks yet.<br/>Click ⭐ in the URL bar to add one.</p>
@@ -346,16 +394,21 @@ function WorkspaceItem({ ws, active, collapsed, onClick, onClose }: {
 
 // ── SidebarTab ────────────────────────────────────────────────────────────────
 
-function SidebarTab({ tab, active, collapsed, onClick, onClose, onPin, isSplit, onSplit }: {
+function SidebarTab({ tab, active, collapsed, onClick, onClose, onPin, isSplit, onSplit, draggable, onDragStart, onDragOver, onDrop }: {
   tab: Tab; active: boolean; collapsed: boolean
   onClick: () => void; onClose: () => void; onPin: () => void
   isSplit: boolean; onSplit: () => void
+  draggable?: boolean; onDragStart?: () => void; onDragOver?: (e: React.DragEvent) => void; onDrop?: () => void
 }) {
   return (
     <div
       className={`sidebar-tab${active ? ' sidebar-tab--active' : ''}${tab.isPinned ? ' sidebar-tab--pinned' : ''}${isSplit ? ' sidebar-tab--split' : ''}`}
       onClick={onClick}
       title={tab.title}
+      draggable={draggable}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
     >
       <div className="sidebar-tab-icon">
         {tab.isLoading ? (
