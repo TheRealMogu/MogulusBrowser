@@ -1,91 +1,116 @@
-import React, { useEffect, useRef } from 'react'
+import React, { useEffect, useRef, useCallback } from 'react'
 import { useBrowser } from '../store/BrowserContext'
 import { Tab } from '../store/browserStore'
 import HomePage from '../pages/HomePage'
 
-interface WebViewPaneProps {
+interface PaneProps {
   tab: Tab
-  active: boolean
+  isActive: boolean
+  workspaceId: string
 }
 
-function WebViewPane({ tab, active }: WebViewPaneProps) {
-  const { updateTab } = useBrowser()
+function WebViewPane({ tab, isActive, workspaceId }: PaneProps) {
+  const { updateTab, setWebviewRef, navigateTo } = useBrowser()
   const ref = useRef<Electron.WebviewTag>(null)
+  const registeredRef = useRef(false)
+
+  // Register webview with main process for tracker counting
+  const registerWebview = useCallback(() => {
+    const wv = ref.current
+    if (!wv || registeredRef.current) return
+    const wcId = wv.getWebContentsId()
+    if (wcId) {
+      window.electronAPI?.registerTabWebview(tab.id, wcId)
+      registeredRef.current = true
+    }
+  }, [tab.id])
 
   useEffect(() => {
     const wv = ref.current
     if (!wv) return
 
-    const onDidStartLoading = () => {
-      updateTab(tab.id, { isLoading: true })
+    const onDomReady = () => {
+      registerWebview()
+      // Extract theme-color meta tag for adaptive UI
+      wv.executeJavaScript(
+        `document.querySelector('meta[name="theme-color"]')?.content || ''`
+      ).then((color: string) => {
+        if (color) updateTab(tab.id, { themeColor: color }, workspaceId)
+      }).catch(() => {})
     }
 
-    const onDidStopLoading = () => {
+    const onStartLoading = () => {
+      updateTab(tab.id, { isLoading: true, themeColor: undefined }, workspaceId)
+      window.electronAPI?.resetTrackerCount(tab.id)
+    }
+
+    const onStopLoading = () => {
+      if (!wv) return
       updateTab(tab.id, {
         isLoading: false,
         canGoBack: wv.canGoBack(),
         canGoForward: wv.canGoForward(),
         url: wv.getURL(),
         title: wv.getTitle() || wv.getURL(),
-      })
+      }, workspaceId)
     }
 
-    const onPageTitleUpdated = (e: Electron.PageTitleUpdatedEvent) => {
-      updateTab(tab.id, { title: e.title })
+    const onTitleUpdate = (e: Electron.PageTitleUpdatedEvent) => {
+      updateTab(tab.id, { title: e.title }, workspaceId)
     }
 
-    const onPageFaviconUpdated = (e: Electron.PageFaviconUpdatedEvent) => {
-      if (e.favicons?.[0]) updateTab(tab.id, { favicon: e.favicons[0] })
+    const onFaviconUpdate = (e: Electron.PageFaviconUpdatedEvent) => {
+      if (e.favicons?.[0]) updateTab(tab.id, { favicon: e.favicons[0] }, workspaceId)
     }
 
-    const onDidFailLoad = () => {
-      updateTab(tab.id, { isLoading: false })
+    const onFailLoad = () => {
+      updateTab(tab.id, { isLoading: false }, workspaceId)
     }
 
-    const onNewWindow = (e: Electron.NewWindowEvent) => {
-      e.preventDefault?.()
-    }
-
-    wv.addEventListener('did-start-loading', onDidStartLoading)
-    wv.addEventListener('did-stop-loading', onDidStopLoading)
-    wv.addEventListener('page-title-updated', onPageTitleUpdated as EventListener)
-    wv.addEventListener('page-favicon-updated', onPageFaviconUpdated as EventListener)
-    wv.addEventListener('did-fail-load', onDidFailLoad)
-    wv.addEventListener('new-window', onNewWindow as EventListener)
+    wv.addEventListener('dom-ready', onDomReady)
+    wv.addEventListener('did-start-loading', onStartLoading)
+    wv.addEventListener('did-stop-loading', onStopLoading)
+    wv.addEventListener('page-title-updated', onTitleUpdate as EventListener)
+    wv.addEventListener('page-favicon-updated', onFaviconUpdate as EventListener)
+    wv.addEventListener('did-fail-load', onFailLoad)
 
     return () => {
-      wv.removeEventListener('did-start-loading', onDidStartLoading)
-      wv.removeEventListener('did-stop-loading', onDidStopLoading)
-      wv.removeEventListener('page-title-updated', onPageTitleUpdated as EventListener)
-      wv.removeEventListener('page-favicon-updated', onPageFaviconUpdated as EventListener)
-      wv.removeEventListener('did-fail-load', onDidFailLoad)
-      wv.removeEventListener('new-window', onNewWindow as EventListener)
+      wv.removeEventListener('dom-ready', onDomReady)
+      wv.removeEventListener('did-start-loading', onStartLoading)
+      wv.removeEventListener('did-stop-loading', onStopLoading)
+      wv.removeEventListener('page-title-updated', onTitleUpdate as EventListener)
+      wv.removeEventListener('page-favicon-updated', onFaviconUpdate as EventListener)
+      wv.removeEventListener('did-fail-load', onFailLoad)
     }
-  }, [tab.id, updateTab])
+  }, [tab.id, workspaceId, updateTab, registerWebview])
 
-  // Sync navigation when tab.url changes externally (address bar)
+  // Sync URL changes from address bar to webview
   useEffect(() => {
     const wv = ref.current
-    if (!wv) return
+    if (!wv || tab.url === 'mogulus://home') return
     try {
       const current = wv.getURL()
-      if (current !== tab.url && tab.url !== 'mogulus://home') {
-        wv.loadURL(tab.url)
-      }
-    } catch {
-      // webview not ready yet
-    }
+      if (current && current !== tab.url) wv.loadURL(tab.url)
+    } catch { /* webview not ready */ }
   }, [tab.url])
 
-  // Expose ref globally for navbar controls
+  // Register/unregister in the ref map as active tab changes
   useEffect(() => {
-    if (active && ref.current) {
-      (window as any).__activeWebview = ref.current
+    if (isActive && ref.current) {
+      setWebviewRef(tab.id, ref.current)
     }
     return () => {
-      if (active) (window as any).__activeWebview = null
+      if (isActive) setWebviewRef(tab.id, null)
     }
-  }, [active])
+  }, [isActive, tab.id, setWebviewRef])
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      window.electronAPI?.unregisterTab(tab.id)
+      registeredRef.current = false
+    }
+  }, [tab.id])
 
   if (tab.url === 'mogulus://home') return null
 
@@ -93,27 +118,43 @@ function WebViewPane({ tab, active }: WebViewPaneProps) {
     <webview
       ref={ref}
       src={tab.url}
+      partition={tab.partition}
       style={{
-        width: '100%',
-        height: '100%',
-        display: active ? 'flex' : 'none',
+        position: 'absolute',
+        inset: 0,
         border: 'none',
+        display: isActive ? 'flex' : 'none',
       }}
-      // Sandboxed webview — no nodeintegration
       webpreferences="contextIsolation=yes,nodeIntegration=no,sandbox=yes"
-      allowpopups={undefined}
     />
   )
 }
 
 export default function WebViewContainer() {
-  const { tabs, activeTabId, activeTab } = useBrowser()
+  const { workspaces, activeWorkspaceId, activeWorkspace, activeTab } = useBrowser()
+
+  // Collect all tabs across all workspaces to keep them mounted (preserves state)
+  const allPanes = workspaces.flatMap(ws =>
+    ws.tabs.map(tab => ({
+      tab,
+      workspaceId: ws.id,
+      isActive: ws.id === activeWorkspaceId && tab.id === ws.activeTabId,
+    }))
+  )
+
+  const showHome = activeTab?.url === 'mogulus://home'
+
+  // Adaptive theme color for the current tab
+  const themeColor = activeTab?.themeColor
 
   return (
-    <div className="webview-container">
-      {activeTab?.url === 'mogulus://home' && <HomePage />}
-      {tabs.map(tab => (
-        <WebViewPane key={tab.id} tab={tab} active={tab.id === activeTabId} />
+    <div
+      className="webview-area"
+      style={themeColor ? { '--tab-theme-color': themeColor } as React.CSSProperties : {}}
+    >
+      {showHome && <HomePage />}
+      {allPanes.map(({ tab, workspaceId, isActive }) => (
+        <WebViewPane key={tab.id} tab={tab} isActive={isActive} workspaceId={workspaceId} />
       ))}
     </div>
   )
